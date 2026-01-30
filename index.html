@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Motion Detection Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #4a6fa5;
+            --secondary-color: #166088;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+            --warning-color: #ffc107;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 30px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .status-indicator {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            margin: 20px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: all 0.5s ease;
+        }
+        
+        .status-active {
+            background: radial-gradient(circle, var(--success-color), #28a745);
+            color: white;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-inactive {
+            background: radial-gradient(circle, #6c757d, #495057);
+            color: white;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 10px 30px rgba(40, 167, 69, 0.4); }
+            50% { transform: scale(1.05); box-shadow: 0 15px 40px rgba(40, 167, 69, 0.6); }
+            100% { transform: scale(1); box-shadow: 0 10px 30px rgba(40, 167, 69, 0.4); }
+        }
+        
+        .event-card {
+            border-left: 5px solid;
+            margin-bottom: 15px;
+            padding: 15px;
+            border-radius: 10px;
+            background: rgba(248, 249, 250, 0.9);
+            transition: transform 0.3s ease;
+        }
+        
+        .event-card:hover {
+            transform: translateX(5px);
+        }
+        
+        .event-human {
+            border-left-color: var(--success-color);
+            background: rgba(40, 167, 69, 0.1);
+        }
+        
+        .event-no-human {
+            border-left-color: var(--danger-color);
+            background: rgba(220, 53, 69, 0.1);
+        }
+        
+        .camera-feed {
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+            border: 3px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .stat-card {
+            text-align: center;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 15px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+        }
+        
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .btn-glow {
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .btn-glow:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+        
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 50px;
+            font-weight: bold;
+            z-index: 1000;
+        }
+        
+        .connected {
+            background: var(--success-color);
+            color: white;
+        }
+        
+        .disconnected {
+            background: var(--danger-color);
+            color: white;
+        }
+        
+        .loading-spinner {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <!-- Connection Status -->
+        <div class="connection-status" id="connectionStatus">
+            <i class="fas fa-wifi"></i> <span id="statusText">Connecting...</span>
+        </div>
+        
+        <!-- Loading Spinner -->
+        <div class="loading-spinner" id="loadingSpinner">
+            <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+        
+        <!-- Header -->
+        <div class="glass-card text-center mb-4">
+            <h1 class="display-4 mb-3">
+                <i class="fas fa-robot text-primary"></i> ESP32 Motion Detection System
+            </h1>
+            <p class="lead mb-0">Real-time human detection using PIR sensor and deep learning</p>
+        </div>
+        
+        <div class="row">
+            <!-- Left Column - Status and Controls -->
+            <div class="col-lg-4">
+                <!-- System Status -->
+                <div class="glass-card mb-4">
+                    <h3><i class="fas fa-tachometer-alt"></i> System Status</h3>
+                    <div class="text-center">
+                        <div class="status-indicator" id="motionIndicator">
+                            <i class="fas fa-ban"></i>
+                        </div>
+                        <h4 id="motionStatusText">No Motion</h4>
+                        <div class="mt-3">
+                            <span class="badge bg-primary" id="methodBadge">Waiting...</span>
+                            <span class="badge bg-info" id="confidenceBadge">0%</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Camera Controls -->
+                <div class="glass-card mb-4">
+                    <h3><i class="fas fa-camera"></i> Camera Controls</h3>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-success btn-lg btn-glow" id="cameraStartBtn">
+                            <i class="fas fa-play"></i> Start Camera
+                        </button>
+                        <button class="btn btn-danger btn-lg btn-glow" id="cameraStopBtn" disabled>
+                            <i class="fas fa-stop"></i> Stop Camera
+                        </button>
+                        <button class="btn btn-info btn-lg btn-glow" id="captureBtn">
+                            <i class="fas fa-camera-retro"></i> Manual Capture
+                        </button>
+                    </div>
+                    <div class="mt-3">
+                        <small class="text-muted" id="cameraStatusText">Camera is not active</small>
+                    </div>
+                </div>
+                
+                <!-- Statistics -->
+                <div class="glass-card">
+                    <h3><i class="fas fa-chart-bar"></i> Statistics</h3>
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <div class="stat-card">
+                                <i class="fas fa-bell fa-2x"></i>
+                                <div class="stat-value" id="totalEvents">0</div>
+                                <small>Total Events</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="stat-card">
+                                <i class="fas fa-user fa-2x"></i>
+                                <div class="stat-value" id="humanEvents">0</div>
+                                <small>Human Detections</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="stat-card">
+                                <i class="fas fa-chart-line fa-2x"></i>
+                                <div class="stat-value" id="detectionRate">0%</div>
+                                <small>Detection Rate</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="stat-card">
+                                <i class="fas fa-clock fa-2x"></i>
+                                <div class="stat-value" id="uptime">0s</div>
+                                <small>Uptime</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Middle Column - Camera Feed -->
+            <div class="col-lg-5">
+                <div class="glass-card h-100">
+                    <h3><i class="fas fa-video"></i> Live Camera Feed</h3>
+                    <div class="camera-feed mb-3">
+                        <img id="cameraImage" src="" alt="Camera Feed" 
+                             class="img-fluid" style="width: 100%; min-height: 400px; background: #000;">
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <button class="btn btn-outline-primary btn-glow" id="refreshImageBtn">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
+                            <button class="btn btn-outline-success btn-glow" id="autoRefreshBtn">
+                                <i class="fas fa-play-circle"></i> Auto Refresh
+                            </button>
+                        </div>
+                        <div class="text-end">
+                            <small class="text-muted" id="lastUpdate">Last update: Never</small>
+                        </div>
+                    </div>
+                    
+                    <!-- Detection Details -->
+                    <div class="mt-4" id="detectionDetails" style="display: none;">
+                        <h5><i class="fas fa-search"></i> Detection Details</h5>
+                        <div class="row">
+                            <div class="col-6">
+                                <strong>Method:</strong> <span id="detailMethod">-</span>
+                            </div>
+                            <div class="col-6">
+                                <strong>Confidence:</strong> <span id="detailConfidence">-</span>
+                            </div>
+                            <div class="col-6">
+                                <strong>People Count:</strong> <span id="detailCount">0</span>
+                            </div>
+                            <div class="col-6">
+                                <strong>Processing Time:</strong> <span id="detailTime">0ms</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Column - Event Log -->
+            <div class="col-lg-3">
+                <div class="glass-card h-100">
+                    <h3><i class="fas fa-history"></i> Recent Events</h3>
+                    <div style="max-height: 550px; overflow-y: auto;" id="eventsContainer">
+                        <div class="text-center text-muted py-4" id="noEventsMessage">
+                            <i class="fas fa-clock fa-3x mb-3"></i>
+                            <p>No events recorded yet</p>
+                        </div>
+                        <!-- Events will be inserted here -->
+                    </div>
+                    <div class="mt-3 text-center">
+                        <button class="btn btn-sm btn-outline-secondary" id="clearEventsBtn">
+                            <i class="fas fa-trash"></i> Clear Events
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" id="exportEventsBtn">
+                            <i class="fas fa-download"></i> Export
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="glass-card text-center mt-4">
+            <p class="mb-0">
+                <i class="fas fa-microchip"></i> ESP32 + 
+                <i class="fas fa-camera"></i> USB Camera + 
+                <i class="fas fa-brain"></i> Deep Learning
+            </p>
+            <small class="text-muted">Powered by Flask, OpenCV, and Socket.IO</small>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <script>
+        // Global variables
+        let socket = null;
+        let autoRefreshInterval = null;
+        let events = [];
+        let startTime = Date.now();
+        let isAutoRefreshing = false;
+        
+        // DOM Elements
+        const motionIndicator = document.getElementById('motionIndicator');
+        const motionStatusText = document.getElementById('motionStatusText');
+        const cameraImage = document.getElementById('cameraImage');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const statusText = document.getElementById('statusText');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const cameraStartBtn = document.getElementById('cameraStartBtn');
+        const cameraStopBtn = document.getElementById('cameraStopBtn');
+        const captureBtn = document.getElementById('captureBtn');
+        const refreshImageBtn = document.getElementById('refreshImageBtn');
+        const autoRefreshBtn = document.getElementById('autoRefreshBtn');
+        const eventsContainer = document.getElementById('eventsContainer');
+        const noEventsMessage = document.getElementById('noEventsMessage');
+        
+        // Initialize Socket.IO connection
+        function initSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.host;
+            
+            socket = io(protocol + '//' + host);
+            
+            socket.on('connect', () => {
+                console.log('Connected to server');
+                updateConnectionStatus(true);
+                
+                // Request initial update
+                socket.emit('request_update');
+            });
+            
+            socket.on('disconnect', () => {
+                console.log('Disconnected from server');
+                updateConnectionStatus(false);
+            });
+            
+            socket.on('connection_response', (data) => {
+                console.log('Server response:', data);
+            });
+            
+            socket.on('motion_event', (data) => {
+                console.log('Motion event received:', data);
+                handleMotionEvent(data);
+            });
+            
+            socket.on('system_update', (data) => {
+                console.log('System update:', data);
+                updateSystemInfo(data);
+            });
+            
+            socket.on('heartbeat', (data) => {
+                updateUptime();
+            });
+        }
+        
+        // Update connection status
+        function updateConnectionStatus(connected) {
+            if (connected) {
+                connectionStatus.className = 'connection-status connected';
+                statusText.textContent = 'Connected';
+            } else {
+                connectionStatus.className = 'connection-status disconnected';
+                statusText.textContent = 'Disconnected';
+            }
+        }
+        
+        // Handle motion event
+        function handleMotionEvent(event) {
+            // Update motion indicator
+            motionIndicator.className = 'status-indicator status-active';
+            motionIndicator.innerHTML = '<i class="fas fa-running"></i>';
+            motionStatusText.textContent = 'MOTION DETECTED!';
+            
+            // Update badges
+            document.getElementById('methodBadge').textContent = event.has_human ? 'Human' : 'No Human';
+            document.getElementById('methodBadge').className = event.has_human ? 
+                'badge bg-success' : 'badge bg-danger';
+            document.getElementById('confidenceBadge').textContent = 
+                `${Math.round(event.confidence * 100)}%`;
+            
+            // Add event to log
+            addEventToLog(event);
+            
+            // Update statistics
+            updateStatistics();
+            
+            // Update camera image
+            updateCameraImage();
+            
+            // Reset motion indicator after 5 seconds
+            setTimeout(() => {
+                motionIndicator.className = 'status-indicator status-inactive';
+                motionIndicator.innerHTML = '<i class="fas fa-ban"></i>';
+                motionStatusText.textContent = 'No Motion';
+            }, 5000);
+        }
+        
+        // Add event to log
+        function addEventToLog(event) {
+            noEventsMessage.style.display = 'none';
+            
+            const eventElement = document.createElement('div');
+            eventElement.className = event.has_human ? 'event-card event-human' : 'event-card event-no-human';
+            
+            const time = new Date().toLocaleTimeString();
+            eventElement.innerHTML = `
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <strong>${event.has_human ? '👤 Human Detected' : '❌ No Human'}</strong>
+                        <div class="small">
+                            <i class="fas fa-clock"></i> ${time}
+                        </div>
+                    </div>
+                    <span class="badge ${event.has_human ? 'bg-success' : 'bg-danger'}">
+                        ${Math.round(event.confidence * 100)}%
+                    </span>
+                </div>
+            `;
+            
+            eventsContainer.insertBefore(eventElement, eventsContainer.firstChild);
+            
+            // Keep only last 20 events
+            const allEvents = eventsContainer.querySelectorAll('.event-card');
+            if (allEvents.length > 20) {
+                eventsContainer.removeChild(allEvents[allEvents.length - 1]);
+            }
+            
+            // Store event
+            events.push({
+                ...event,
+                time: time
+            });
+        }
+        
+        // Update camera image
+        function updateCameraImage() {
+            const timestamp = new Date().getTime();
+            cameraImage.src = `/api/image/latest?t=${timestamp}`;
+            document.getElementById('lastUpdate').textContent = 
+                `Last update: ${new Date().toLocaleTimeString()}`;
+        }
+        
+        // Update system information
+        function updateSystemInfo(data) {
+            document.getElementById('cameraStatusText').textContent = 
+                data.camera_active ? 'Camera is active' : 'Camera is not active';
+            
+            cameraStartBtn.disabled = data.camera_active;
+            cameraStopBtn.disabled = !data.camera_active;
+            
+            if (data.latest_event) {
+                document.getElementById('detectionDetails').style.display = 'block';
+                document.getElementById('detailMethod').textContent = 
+                    data.latest_event.detection?.method || 'N/A';
+                document.getElementById('detailConfidence').textContent = 
+                    data.latest_event.detection ? 
+                    `${Math.round(data.latest_event.detection.confidence * 100)}%` : '0%';
+                document.getElementById('detailCount').textContent = 
+                    data.latest_event.detection?.people_count || 0;
+                document.getElementById('detailTime').textContent = 
+                    data.latest_event.detection ? 
+                    `${Math.round(data.latest_event.detection.processing_time * 1000)}ms` : '0ms';
+            }
+        }
+        
+        // Update statistics
+        function updateStatistics() {
+            const total = events.length;
+            const humanCount = events.filter(e => e.has_human).length;
+            const detectionRate = total > 0 ? Math.round((humanCount / total) * 100) : 0;
+            
+            document.getElementById('totalEvents').textContent = total;
+            document.getElementById('humanEvents').textContent = humanCount;
+            document.getElementById('detectionRate').textContent = `${detectionRate}%`;
+        }
+        
+        // Update uptime
+        function updateUptime() {
+            const uptimeSeconds = Math.floor((Date.now() - startTime) / 1000);
+            const hours = Math.floor(uptimeSeconds / 3600);
+            const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+            const seconds = uptimeSeconds % 60;
+            
+            let uptimeText = '';
+            if (hours > 0) uptimeText += `${hours}h `;
+            if (minutes > 0) uptimeText += `${minutes}m `;
+            uptimeText += `${seconds}s`;
+            
+            document.getElementById('uptime').textContent = uptimeText;
+        }
+        
+        // Camera control functions
+        cameraStartBtn.addEventListener('click', () => {
+            fetch('/api/camera/control', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ action: 'start' })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    cameraStartBtn.disabled = true;
+                    cameraStopBtn.disabled = false;
+                    document.getElementById('cameraStatusText').textContent = 'Camera started successfully';
+                    updateCameraImage();
+                }
+            })
+            .catch(error => {
+                console.error('Error starting camera:', error);
+            });
+        });
+        
+        cameraStopBtn.addEventListener('click', () => {
+            fetch('/api/camera/control', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ action: 'stop' })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    cameraStartBtn.disabled = false;
+                    cameraStopBtn.disabled = true;
+                    document.getElementById('cameraStatusText').textContent = 'Camera stopped';
+                }
+            })
+            .catch(error => {
+                console.error('Error stopping camera:', error);
+            });
+        });
+        
+        captureBtn.addEventListener('click', () => {
+            fetch('/api/debug/capture', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert(`Image captured: ${data.path}`);
+                    updateCameraImage();
+                }
+            });
+        });
+        
+        refreshImageBtn.addEventListener('click', () => {
+            updateCameraImage();
+        });
+        
+        autoRefreshBtn.addEventListener('click', () => {
+            if (isAutoRefreshing) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshBtn.innerHTML = '<i class="fas fa-play-circle"></i> Auto Refresh';
+                autoRefreshBtn.classList.remove('btn-success');
+                autoRefreshBtn.classList.add('btn-outline-success');
+                isAutoRefreshing = false;
+            } else {
+                autoRefreshInterval = setInterval(updateCameraImage, 2000); // Refresh every 2 seconds
+                autoRefreshBtn.innerHTML = '<i class="fas fa-stop-circle"></i> Stop Auto Refresh';
+                autoRefreshBtn.classList.remove('btn-outline-success');
+                autoRefreshBtn.classList.add('btn-success');
+                isAutoRefreshing = true;
+            }
+        });
+        
+        clearEventsBtn.addEventListener('click', () => {
+            if (confirm('Clear all events?')) {
+                eventsContainer.innerHTML = '';
+                noEventsMessage.style.display = 'block';
+                events = [];
+                updateStatistics();
+            }
+        });
+        
+        exportEventsBtn.addEventListener('click', () => {
+            const dataStr = JSON.stringify(events, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `motion_events_${new Date().toISOString().slice(0,10)}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            initSocket();
+            updateUptime();
+            setInterval(updateUptime, 1000);
+            
+            // Load initial events
+            fetch('/api/events')
+                .then(response => response.json())
+                .then(data => {
+                    if (Array.isArray(data)) {
+                        events = data;
+                        updateStatistics();
+                        
+                        // Display recent events
+                        data.slice(-10).reverse().forEach(event => {
+                            const logEvent = {
+                                has_human: event.detection?.has_human || false,
+                                confidence: event.detection?.confidence || 0
+                            };
+                            addEventToLog(logEvent);
+                        });
+                    }
+                });
+            
+            // Get initial camera status
+            fetch('/api/camera/control', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ action: 'status' })
+            })
+            .then(response => response.json())
+            .then(data => {
+                cameraStartBtn.disabled = data.active;
+                cameraStopBtn.disabled = !data.active;
+            });
+        });
+        
+        // Handle image load errors
+        cameraImage.onerror = function() {
+            this.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><rect width="400" height="300" fill="#f0f0f0"/><text x="200" y="150" font-family="Arial" font-size="20" text-anchor="middle" fill="#999">No Image Available</text></svg>';
+        };
+    </script>
+</body>
+</html>
