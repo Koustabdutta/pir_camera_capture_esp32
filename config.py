@@ -1,7 +1,7 @@
 # config.py - Save on ESP32
 WIFI_CONFIG = {
-    'ssid':KoustabID',
-    'password'Koustab#2000ORD'
+    'ssid':Name',
+    'password'Password'
 }
 
 SERVER_CONFIG = {
@@ -13,4 +13,5 @@ SENSOR_CONFIG = {
     'pin': 14,
     'cooldown': 10000,
     'sensor_id': 'esp32_pir_01'
+
 }
