@@ -7,11 +7,11 @@ import time
 import gc
 
 # WiFi Configuration
-WIFI_SSID = "Koustab"
-WIFI_PASSWORD = "Koustab#2000"
+WIFI_SSID = "Name"
+WIFI_PASSWORD = "Password"
 
 # Server Configuration (Your desktop IP)
-SERVER_URL = "http://192.168.29.173:5000/api/motion"
+SERVER_URL = "http://local_ip:5000/api/motion"
 
 # PIR Sensor Pin
 PIR_PIN = 14  # GPIO 14
@@ -144,4 +144,5 @@ def main():
 
 # Run the main function
 if __name__ == "__main__":
+
     main()
